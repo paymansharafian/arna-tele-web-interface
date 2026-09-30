@@ -1,0 +1,169 @@
+**ARNA Robot Control System — Architecture Overview (Current Production Setup)**
+
+## 1. System Summary
+ARNA is a distributed teleoperation and manipulation system with:
+1. Robot-side runtime on blackbird (base control, base camera, teleop forwarder).
+2. Master/control/vision/planning stack on Legion.
+3. Web GUI and Cloudflare ingress hosted on Legion.
+4. A single ROS master on Legion used by both machines.
+5. Three rosbridge channels to isolate control traffic from each camera stream.
+
+This design keeps robot control local to the LAN while exposing remote operator access through Cloudflare with lower end-to-end latency under load.
+
+## 2. Physical Components
+1. Mobile base: custom omnidirectional platform with EtherCAT motor control.
+2. Manipulator: Kinova Gen3 7-DOF arm.
+3. Onboard compute: blackbird ARM Ubuntu board (always on with robot power).
+4. Base camera: Kinect RGB on blackbird via USB.
+5. Wrist camera: Kinova RGBD pipeline published as ROS topics.
+6. Operator/control host: Legion laptop (Ubuntu, ROS master and main application stack).
+
+## 3. Network and ROS Topology
+1. ROS master runs on Legion at `10.0.0.101:11311`.
+2. Blackbird joins Legion ROS graph using:
+   `ROS_MASTER_URI=http://10.0.0.101:11311`
+   `ROS_IP=10.0.0.20`
+3. Legion runs rosbridge servers on:
+   `9090` control/services.
+   `9091` base camera stream.
+   `9092` arm camera stream.
+4. Cloudflare tunnel runs on Legion in token mode.
+5. Blackbird cloudflared service is disabled.
+
+## 4. Responsibility Split
+
+### 4.1 Legion (control host + internet ingress)
+1. ROS master and global ROS graph coordination.
+2. Kinova stack via launch:
+   `kortex_driver.launch`
+   `kinova_vision_rgbd.launch`
+3. Rosbridge websocket endpoints:
+   `:9090` control plane.
+   `:9091` base camera plane.
+   `:9092` arm camera plane.
+4. Pick-and-place node (`main.py`) using FastSAM + Contact-GraspNet.
+5. RViz launch profile for operator debugging.
+6. Web GUI hosting:
+   arna-control exported static build served locally on `127.0.0.1:3000`.
+7. Cloudflare tunnel ingress on Legion:
+   `arnaconnect.stream -> http://localhost:3000`
+   `websocket.arnaconnect.stream -> http://localhost:9090`
+   `basewebsocket.arnaconnect.stream -> http://localhost:9091`
+   `armwebsocket.arnaconnect.stream -> http://localhost:9092`
+
+### 4.2 Blackbird (robot-side runtime)
+1. Base EtherCAT controller node.
+2. Base odometry publisher.
+3. Teleop forwarding node:
+   subscribes `/ARNA_TELEOP_MOV` and publishes `/cmd_vel`.
+4. Base Kinect pipeline with RGB-focused low-latency config:
+   `rgb_processing=true`
+   `depth_processing=false`
+   `depth_registered_processing=false`
+   `ir_processing=false`
+5. Base camera transport tuning for lower latency:
+   `/base_cam/driver/color_mode=5`
+   `/base_cam/driver/depth_mode=5`
+   `/base_cam/rgb/image_raw/compressed/format=jpeg`
+   `/base_cam/rgb/image_raw/compressed/jpeg_quality=25`
+   `/base_cam/rgb/image_raw/compressed/jpeg_progressive=false`
+6. Safety behavior in teleop forwarder:
+   movement vector zeroed if command stream times out (~500 ms watchdog logic).
+
+## 5. Web Interface Behavior
+1. GUI exposes:
+   arm Cartesian joystick controls.
+   base translation/rotation joysticks.
+   gripper command and feedback.
+   Home action command.
+   camera viewers (arm + base).
+   click-to-pick and run-pick trigger.
+2. Frontend opens three websocket ROS clients:
+   control socket: `wss://websocket.arnaconnect.stream`.
+   base camera socket: `wss://basewebsocket.arnaconnect.stream`.
+   arm camera socket: `wss://armwebsocket.arnaconnect.stream`.
+3. Camera transport:
+   `sensor_msgs/CompressedImage`.
+   rosbridge CBOR compression.
+   browser renders JPEG bytes via Blob URL for low overhead.
+4. Per-camera throttle in frontend:
+   arm camera `throttle_rate=33` (~30 FPS).
+   base camera `throttle_rate=80` (~12.5 FPS).
+5. Connection handling:
+   explicit on-connection/on-close/on-error handlers for control, base cam, and arm cam sockets.
+
+## 6. Camera Pipeline Optimizations
+1. Arm camera stream (`/pick_place_cam/compressed`) is optimized in `main.py`:
+   annotated frame resized by 0.5 before streaming.
+   JPEG encode quality set to 30.
+2. Base camera stream is optimized via openni2 processing reduction and compressed transport parameters on blackbird.
+3. Splitting camera sockets prevents one camera burst from stalling the other camera or control channel.
+
+## 7. Launch and Runtime Procedure (Current)
+1. Start Legion ROS stack:
+   `export ROS_IP=10.0.0.101`
+   `roslaunch pick_place pick_place.launch`
+2. Start blackbird base stack:
+   `ssh blackbird.lan`
+   `sudo -s`
+   `cd ros/arna_ws/src/arna_teleop/src/`
+   `./base_interface.sh`
+3. GUI + tunnel are service-managed on Legion:
+   `arna-control.service`
+   `cloudflared.service`
+
+This keeps operator bring-up nearly identical to the previous workflow while improving stream isolation and latency.
+
+## 8. Data Flow
+
+### 8.1 Control Plane
+1. Remote browser sends joystick/service intents to Cloudflare hostname.
+2. Cloudflare tunnels to Legion localhost `:9090`.
+3. Rosbridge publishes/subscribes ROS control topics/services.
+4. Blackbird receives base commands through ROS master routing and drives `/cmd_vel`.
+
+### 8.2 Pick-and-Place Flow
+1. Operator clicks image point in arm camera viewer.
+2. Frontend publishes `/pick_click_point`.
+3. Operator triggers `/run_pick`.
+4. `main.py` performs segmentation + grasp ranking + transform + staged execution.
+
+### 8.3 Camera Plane
+1. Arm camera web stream uses rosbridge `:9092`.
+2. Base camera web stream uses rosbridge `:9091`.
+3. Frontend subscribes to each stream on its dedicated socket and renders compressed frames.
+
+## 9. Access Modes
+
+### 9.1 Remote
+1. Browser opens `https://arnaconnect.stream`.
+2. Cloudflare Access may challenge/authenticate user.
+3. Sockets connect to:
+   `wss://websocket.arnaconnect.stream`
+   `wss://basewebsocket.arnaconnect.stream`
+   `wss://armwebsocket.arnaconnect.stream`
+
+### 9.2 Local
+1. System remains operable on LAN even if Cloudflare is down.
+2. ROS graph and robot control continue locally.
+3. GUI remains available via Legion local service endpoint.
+
+## 10. Reliability and Safety Notes
+1. Three-way rosbridge split (`9090` control, `9091` base cam, `9092` arm cam) protects control responsiveness under video load.
+2. Base teleop forwarder watchdog stops motion on command loss.
+3. GUI service bound to loopback (`127.0.0.1:3000`) limits direct exposure; Cloudflare is the ingress layer.
+4. Moving tunnel + GUI to Legion removes blackbird internet dependency as a single point of remote-access failure.
+
+## 11. Operational Health Checks (Recommended)
+1. `sudo systemctl status arna-control --no-pager`
+2. `sudo systemctl status cloudflared --no-pager`
+3. Confirm Legion ROS launch started and rosbridge ports `9090/9091/9092` are up.
+4. Confirm blackbird base launch connected to Legion ROS master.
+5. Validate in GUI:
+   control socket connected.
+   arm and base camera sockets connected.
+   base joystick movement.
+   arm velocity control.
+   camera streams.
+   pick trigger path.
+

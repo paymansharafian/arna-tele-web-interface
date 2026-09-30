@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+  --rounded-badge: 1rem;
+  --rounded-box: 1rem;
+
+  
+}
+
+*
+{
+  transition: background 0.1s, color 0.1s;
+}
+
+
+.card
+{
+
+  --padding-card: 1rem;
+}
+
+.cam-view 
+{
+  width: 100%;
+  max-width: fit-content;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+
+  margin-bottom: 20px;
+
+  box-shadow: 0 18px 15px 0 oklch(var(--b1));
+
+  & img
+  {
+    max-height: 30vh;
+    object-fit: contain;
+    width: 100%;
+    border-radius: var(--rounded-box);
+  }
+}

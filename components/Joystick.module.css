@@ -1,0 +1,114 @@
+/* components/Joystick.module.css */
+.joystickWrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.joystickLabel {
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  min-width: fit-content;
+  text-wrap: nowrap;
+}
+
+.joystickContainer {
+  position: relative;
+  user-select: none;
+  touch-action: none;
+}
+
+.joystickBase {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  background: radial-gradient(circle at center, rgba(255,255,255,0.1), transparent);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.joystickBase:active {
+  cursor: grabbing;
+}
+
+.joystickStick {
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  position: absolute;
+  transition: transform 0.1s ease-out;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Container for 1D joysticks */
+.joystickContainer1D {
+  position: relative;
+  user-select: none;
+  touch-action: none;
+}
+
+/* Vertical 1D joystick */
+.joystickBase1DVertical {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.055), transparent);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Horizontal 1D joystick */
+.joystickBase1DHorizontal {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  background: radial-gradient(ellipse at center, rgba(255,255,255,0.1), transparent);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Vertical 1D stick */
+.joystickStick1DVertical {
+  width: 40px;
+  height: 25%;
+  border-radius: 999px;
+  transition: transform 0.1s ease-out;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Horizontal 1D stick */
+.joystickStick1DHorizontal {
+  width: 25%;
+  height: 40px;
+  border-radius: 999px;
+  transition: transform 0.1s ease-out;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.coordinates {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 0.75rem;
+  color: #666;
+  font-family: monospace;
+  margin-top: 0.25rem;
+}
